@@ -8,18 +8,13 @@ interface Photo {
   filename?: string;
 }
 
-const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3001';
+const API_BASE = '';
 
 export const usePhotoStorage = () => {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Load photos from server on mount
-  useEffect(() => {
-    fetchPhotos();
-  }, []);
-
-  const fetchPhotos = async () => {
+  const fetchPhotos = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/api/photos`);
       if (response.ok) {
@@ -29,7 +24,12 @@ export const usePhotoStorage = () => {
     } catch (error) {
       console.error('Failed to load photos from server:', error);
     }
-  };
+  }, []);
+
+  // Load photos from server on mount
+  useEffect(() => {
+    fetchPhotos();
+  }, [fetchPhotos]);
 
   const addPhotos = useCallback(async (files: File[]) => {
     setLoading(true);
