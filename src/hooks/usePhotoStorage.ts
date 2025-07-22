@@ -5,73 +5,106 @@ interface Photo {
   name: string;
   url: string;
   size: number;
+  filename?: string;
 }
 
-const STORAGE_KEY = 'photo-gallery-photos';
+const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3001';
 
 export const usePhotoStorage = () => {
   const [photos, setPhotos] = useState<Photo[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Load photos from localStorage on mount
+  // Load photos from server on mount
   useEffect(() => {
-    const savedPhotos = localStorage.getItem(STORAGE_KEY);
-    if (savedPhotos) {
-      try {
-        const parsed = JSON.parse(savedPhotos);
-        setPhotos(parsed);
-      } catch (error) {
-        console.error('Failed to load photos from storage:', error);
+    fetchPhotos();
+  }, []);
+
+  const fetchPhotos = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/photos`);
+      if (response.ok) {
+        const serverPhotos = await response.json();
+        setPhotos(serverPhotos);
       }
+    } catch (error) {
+      console.error('Failed to load photos from server:', error);
+    }
+  };
+
+  const addPhotos = useCallback(async (files: File[]) => {
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      files.forEach(file => {
+        formData.append('photos', file);
+      });
+
+      const response = await fetch(`${API_BASE}/api/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success) {
+          // Add API_BASE to URLs for proper serving
+          const newPhotos = result.files.map((file: any) => ({
+            ...file,
+            url: `${API_BASE}${file.url}`
+          }));
+          setPhotos(prev => [...prev, ...newPhotos]);
+        }
+      } else {
+        throw new Error('Upload failed');
+      }
+    } catch (error) {
+      console.error('Failed to upload photos:', error);
+      throw error;
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  // Save photos to localStorage whenever photos change
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(photos));
-  }, [photos]);
+  const deletePhoto = useCallback(async (id: string) => {
+    try {
+      const photoToDelete = photos.find(p => p.id === id);
+      if (photoToDelete && photoToDelete.filename) {
+        const response = await fetch(`${API_BASE}/api/photos/${photoToDelete.filename}`, {
+          method: 'DELETE',
+        });
 
-  const addPhotos = useCallback((files: File[]) => {
-    const newPhotos = files.map(file => {
-      // Generate unique filename to handle duplicates
-      const timestamp = Date.now();
-      const randomSuffix = Math.random().toString(36).substring(2, 8);
-      const fileName = `${timestamp}-${randomSuffix}-${file.name}`;
-      
-      return {
-        id: `${timestamp}-${randomSuffix}`,
-        name: file.name,
-        url: URL.createObjectURL(file),
-        size: file.size
-      };
-    });
-
-    setPhotos(prev => [...prev, ...newPhotos]);
-  }, []);
-
-  const deletePhoto = useCallback((id: string) => {
-    setPhotos(prev => {
-      const photoToDelete = prev.find(p => p.id === id);
-      if (photoToDelete) {
-        // Revoke the object URL to free memory
-        URL.revokeObjectURL(photoToDelete.url);
+        if (response.ok) {
+          setPhotos(prev => prev.filter(p => p.id !== id));
+        } else {
+          throw new Error('Delete failed');
+        }
       }
-      return prev.filter(p => p.id !== id);
-    });
-  }, []);
-
-  const clearAllPhotos = useCallback(() => {
-    // Revoke all object URLs to free memory
-    photos.forEach(photo => {
-      URL.revokeObjectURL(photo.url);
-    });
-    setPhotos([]);
-    localStorage.removeItem(STORAGE_KEY);
+    } catch (error) {
+      console.error('Failed to delete photo:', error);
+    }
   }, [photos]);
+
+  const clearAllPhotos = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/photos`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setPhotos([]);
+      } else {
+        throw new Error('Clear all failed');
+      }
+    } catch (error) {
+      console.error('Failed to clear photos:', error);
+    }
+  }, []);
 
   return {
     photos,
     addPhotos,
     deletePhoto,
-    clearAllPhotos
+    clearAllPhotos,
+    loading
   };
 };
