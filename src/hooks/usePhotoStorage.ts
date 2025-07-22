@@ -8,7 +8,7 @@ interface Photo {
   filename?: string;
 }
 
-const API_BASE = '';
+const API_BASE = 'http://localhost:3001';
 
 export const usePhotoStorage = () => {
   const [photos, setPhotos] = useState<Photo[]>([]);
